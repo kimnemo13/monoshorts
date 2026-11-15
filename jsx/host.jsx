@@ -1117,16 +1117,16 @@ function SM_applyExportAll(encJson) {
 // =====================================================================
 
 var SM_WRAP_LAST_UNDO = [];   // 쇼츠 만들기 중 자동 줄바꿈한 항목(되돌리기용)
-var SM_WRAP_DIAG = "", SM_WRAP_FIRSTFAIL = "";   // 첫 실패 진단
+var SM_WRAP_DIAG = "", SM_WRAP_FIRSTFAIL = "", SM_WRAP_DUMPN = 0;   // 첫 실패 진단
 // 값 앞부분을 사람이 볼 수 있게 (제어문자는 코드로)
-function SM_rawPeek(v) {
-    v = String(v); var o = "";
-    for (var i = 0; i < v.length && i < 160; i++) {
+function SM_rawPeek(v, lim) {
+    v = String(v); var o = ""; lim = lim || 160;
+    for (var i = 0; i < v.length && i < lim; i++) {
         var c = v.charCodeAt(i);
         o += (c < 32 || c === 127) ? ("<" + c + ">") : v.charAt(i);
     }
     var t = v.indexOf("Text\":\""); if (t < 0) t = v.indexOf("EditValue\":\"");
-    if (t > 160) { o += " … "; for (i = t; i < v.length && i < t + 90; i++) { c = v.charCodeAt(i); o += (c < 32) ? ("<" + c + ">") : v.charAt(i); } }
+    if (t > lim) { o += " … "; for (i = t; i < v.length && i < t + 90; i++) { c = v.charCodeAt(i); o += (c < 32) ? ("<" + c + ">") : v.charAt(i); } }
     return o + " (총 " + v.length + "자)";
 }
 
@@ -1313,7 +1313,7 @@ function SM_applyBreaks(raw, fld, breaks, brRaw) {
             rng = fld.map[b.at];
             res = res.substring(0, rng[0]) + brRaw + res.substring(rng[1]);
         } else {
-            if (fld.fmt !== "B") return null;   // 형식 A는 글자 수가 바뀌면 스타일이 깨질 수 있어 안 함
+            if (fld.fmt !== "B") continue;   // 형식 A는 글자 수가 바뀌면 스타일이 깨질 수 있어 띄어쓰기 줄바꿈만 함
             rng = fld.map[b.at];
             res = res.substring(0, rng[0]) + brRaw + res.substring(rng[0]);
             inserts++;
@@ -1359,6 +1359,7 @@ function SM_wrapClip(clip, frameW, opt, undo, seqId, tIdx) {
                 continue;
             }
             foundText = true;
+            if (SM_WRAP_DUMPN < 3) { SM_WRAP_DUMPN++; r.detail.push("[원본값 " + SM_WRAP_DUMPN + "] 컴포넌트 '" + String(comp.displayName) + "' 속성 '" + String(p.displayName) + "' 글자크기" + SM_scaleOf(comp) + "% 모션" + motionScale + "%: " + SM_rawPeek(raw, 900)); }
             var fs = SM_fontSize(raw);
             var unitPx = fs * (textScale / 100) * (motionScale / 100);
             var limit = (frameW * opt.safe / 100) / unitPx;     // 한 줄에 허용되는 폭(글자 크기 1 단위)
@@ -1373,7 +1374,7 @@ function SM_wrapClip(clip, frameW, opt, undo, seqId, tIdx) {
             var done = false, lastWhy = "", after = "";
             for (var ci = 0; ci < cands.length && !done; ci++) {
                 var nraw = SM_applyBreaks(raw, fld, breaks, cands[ci]);
-                if (!nraw) { lastWhy = "건너뜀(띄어쓰기 없음)"; break; }
+                if (!nraw || nraw === raw) { lastWhy = "건너뜀(띄어쓰기 없음)"; break; }
                 try { p.setValue(nraw, true); } catch (e3) { lastWhy = "쓰기 실패 " + e3; continue; }
                 var back = "";
                 try { back = String(p.getValue()); } catch (e4) {}
@@ -1578,7 +1579,7 @@ function SM_capSeqsOfActive() {
 
 function SM_wrapSeqs(seqs, opt) {
     var undo = [], changed = 0, skipped = 0, clips = 0, logs = [], names = [];
-    SM_WRAP_DIAG = ""; SM_WRAP_FIRSTFAIL = "";
+    SM_WRAP_DIAG = ""; SM_WRAP_FIRSTFAIL = ""; SM_WRAP_DUMPN = 0;
     for (var i = 0; i < seqs.length; i++) {
         var r = SM_wrapCaptionsOfSeq(seqs[i], opt, undo);
         changed += r.changed; skipped += r.skipped; clips += r.clips;

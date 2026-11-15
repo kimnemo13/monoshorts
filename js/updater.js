@@ -13,7 +13,7 @@
 
   var DEFAULT_REPO = "kimnemo13/monoshorts", BRANCH = "main";
   var AUTO_KEY = "monoshorts.autoUpdate", PIN_KEY = "monoshorts.pinnedVersion";
-  var PROTECT = /^(sm-settings\.json|wrap-undo\.json|last-export-log\.txt|version\.json)$/;
+  var PROTECT = /^(sm-settings\.json|wrap-undo\.json|wrap-log\.txt|last-export-log\.txt|version\.json)$/;
 
   function extensionRoot() {
     var p = decodeURI(window.__adobe_cep__.getSystemPath("extension"));

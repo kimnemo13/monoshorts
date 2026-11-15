@@ -1,7 +1,7 @@
 {
-  "version": "1.0.8",
+  "version": "1.0.9",
   "repo": "kimnemo13/monoshorts",
-  "notes": "줄바꿈이 반영되지 않던 문제 수정 시도(프리미어 고유 줄바꿈 문자 사용) + 실패 원인 표시",
+  "notes": "줄바꿈 진단 기록(wrap-log.txt) + 띄어쓰기 기준 줄바꿈은 항상 시도",
   "files": [
     "index.html",
     "js/main.js",

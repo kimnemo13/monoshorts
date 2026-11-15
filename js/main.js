@@ -627,7 +627,12 @@
       var head = "줄바꿈 " + r.changed + "개 적용" + (r.skipped ? (", 건너뜀 " + r.skipped + "개") : "") +
         "  (" + (r.seqCount ? (r.seqCount + "개 시퀀스, ") : "") + "자막 " + r.clips + "개 검토)";
       if (r.clips === 0) head = "자막(텍스트) 클립을 찾지 못했어요.";
-      setStatus(head + (log ? ("\n\n" + log) : "") + (r.changed ? "\n\n마음에 안 들면 '마지막 줄바꿈 되돌리기'를 누르세요." : ""), r.clips ? "ok" : "err", true);
+      // 건너뛴 이유는 첫 줄에 바로 보이게
+      var why = (log.match(/⚠ 건너뛴 이유: ([^\n]*)/) || [])[1];
+      if (why) head += "\n⚠ 건너뛴 이유: " + why;
+      var full = head + (log ? ("\n\n" + log) : "") + (r.changed ? "\n\n마음에 안 들면 '마지막 줄바꿈 되돌리기'를 누르세요." : "");
+      try { require("fs").writeFileSync(extPath() + "/wrap-log.txt", new Date().toLocaleString() + "  v" + SM_VERSION + "\n" + full); } catch (eW) {}   // 진단용 기록
+      setStatus(full, r.changed ? "ok" : "err", true);
     });
   }
   function undoWrap() {
