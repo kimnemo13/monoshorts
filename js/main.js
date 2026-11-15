@@ -4,7 +4,7 @@
 (function () {
   "use strict";
 
-  var SM_VERSION = (window.SMUpdater && window.SMUpdater.localVersion()) || "1.0.3";
+  var SM_VERSION = (window.SMUpdater && window.SMUpdater.localVersion()) || "1.0.4";
 
   function evalScript(script, cb) {
     if (window.__adobe_cep__ && window.__adobe_cep__.evalScript) {
@@ -220,7 +220,8 @@
       noReframe: !reframeOn,    // 오토 프레임 비적용 여부
       titleMogrt: SETTINGS.titleMogrt || "",    // 윗줄 제목 템플릿 — 쇼츠 만들 때 V2에 자동 배치
       titleMogrt2: SETTINGS.titleMogrt2 || "",  // 아랫줄 제목 템플릿 — V3에 자동 배치
-      segments: chosen.map(function (s) { return { name: s.name, start: s.start, end: s.end }; })
+      segments: chosen.map(function (s) { return { name: s.name, start: s.start, end: s.end }; }),
+      wrap: (reframeOn && wrapCfg().auto) ? { safe: wrapCfg().safe, maxChars: wrapCfg().maxChars } : null   // [1.0.4] 자막 자동 줄바꿈
     };
     setStatus("Auto Reframe 쇼츠 " + chosen.length + "개 만드는 중…\n(분석에 구간당 수십 초 걸릴 수 있어요. 기다려주세요)");
     elBtnMake.disabled = true;
@@ -235,6 +236,8 @@
         // 방금 만든(체크된) 구간은 목록에서 제거 — 체크 안 한 구간은 남김
         workList = workList.filter(function (s) { return s.checked === false; });
         renderList();
+        // 자동 줄바꿈한 것들은 되돌리기 목록에 저장
+        if (opt.wrap) evalScript("SM_takeLastWrapUndo()", function (u) { pushUndo("쇼츠 만들기 자동 줄바꿈", u); });
         var hasTitle = !!(SETTINGS.titleMogrt || SETTINGS.titleMogrt2);
         var titleWhere = SETTINGS.titleMogrt2 ? "V2·V3" : "V2";
         var doneMsg = "완료 " + count + "개 생성.\n" + logs +
@@ -572,6 +575,85 @@
   $("btnExport").addEventListener("click", doExport);
   $("btnExportAll").addEventListener("click", doExportAll);
 
+  // ========== [1.0.4] 자막 줄바꿈 ==========
+  function wrapCfg() {
+    var w = SETTINGS.wrap || {};
+    return {
+      auto: w.auto !== false,
+      safe: (w.safe >= 60 && w.safe <= 100) ? w.safe : 90,
+      maxChars: (w.maxChars > 0) ? w.maxChars : 0
+    };
+  }
+  function syncWrapUI() {
+    var c = wrapCfg();
+    $("chkAutoWrap").checked = c.auto;
+    $("rngWrapSafe").value = c.safe;
+    $("valWrapSafe").textContent = c.safe + "%";
+    $("numWrapChars").value = c.maxChars;
+  }
+  function saveWrapUI() {
+    SETTINGS.wrap = {
+      auto: $("chkAutoWrap").checked,
+      safe: parseInt($("rngWrapSafe").value, 10) || 90,
+      maxChars: Math.max(0, parseInt($("numWrapChars").value, 10) || 0)
+    };
+    $("valWrapSafe").textContent = SETTINGS.wrap.safe + "%";
+    saveSettings();
+  }
+  // 되돌리기 기록: wrap-undo.json = [{time, label, items:[...]}, ...] (최근 30개)
+  function undoPath() { return extPath() + "/wrap-undo.json"; }
+  function readUndo() {
+    try { var fs = require("fs"); if (fs.existsSync(undoPath())) return JSON.parse(fs.readFileSync(undoPath(), "utf8")); } catch (e) {}
+    return [];
+  }
+  function writeUndo(arr) { try { require("fs").writeFileSync(undoPath(), JSON.stringify(arr.slice(-30))); } catch (e) {} }
+  function pushUndo(label, itemsStr) {
+    var items = [];
+    try { items = typeof itemsStr === "string" ? JSON.parse(itemsStr) : (itemsStr || []); } catch (e) { return; }
+    if (!items.length) return;
+    var arr = readUndo();
+    arr.push({ time: new Date().toLocaleString(), label: label, items: items });
+    writeUndo(arr);
+  }
+  function runWrap(fnName, label) {
+    saveWrapUI();
+    var c = wrapCfg();
+    var arg = JSON.stringify({ safe: c.safe, maxChars: c.maxChars });
+    setStatus("자막 줄바꿈 중…", "", true);
+    evalScript(fnName + "('" + arg + "')", function (res) {
+      var r = null;
+      try { r = JSON.parse(res); } catch (e) { setStatus("줄바꿈 실패: " + res, "err"); return; }
+      if (!r.ok) { setStatus("줄바꿈 실패: " + r.reason, "err"); return; }
+      pushUndo(label + " · " + r.seq, r.undo);
+      var log = decodeURIComponent(r.log || "");
+      var head = "줄바꿈 " + r.changed + "개 적용" + (r.skipped ? (", 건너뜀 " + r.skipped + "개") : "") +
+        "  (자막 " + r.clips + "개 확인 · 화면 폭 " + r.width + "px)";
+      if (r.clips === 0) head = "자막(텍스트) 클립을 찾지 못했어요. 자막이 든 ~reframe 시퀀스를 열었는지 확인하세요.";
+      setStatus(head + (log ? ("\n\n" + log) : "") + (r.changed ? "\n\n마음에 안 들면 '마지막 줄바꿈 되돌리기'를 누르세요." : ""), r.clips ? "ok" : "err", true);
+    });
+  }
+  function undoWrap() {
+    var arr = readUndo();
+    if (!arr.length) { setStatus("되돌릴 줄바꿈 기록이 없습니다.", "err"); return; }
+    var last = arr[arr.length - 1];
+    var enc = encodeURIComponent(JSON.stringify(last.items)).replace(/'/g, "%27");
+    setStatus("되돌리는 중… (" + last.label + ")", "", true);
+    evalScript("SM_restoreCaptions('" + enc + "')", function (res) {
+      if (res && res.indexOf("ok:") === 0) {
+        arr.pop(); writeUndo(arr);
+        setStatus("되돌리기 완료: " + last.label + " — " + res.substring(3) + " 복원" +
+          (arr.length ? ("\n(남은 되돌리기 기록 " + arr.length + "개)") : ""), "ok", true);
+      } else setStatus("되돌리기 실패: " + res, "err");
+    });
+  }
+  $("chkAutoWrap").addEventListener("change", saveWrapUI);
+  $("rngWrapSafe").addEventListener("input", function () { $("valWrapSafe").textContent = $("rngWrapSafe").value + "%"; });
+  $("rngWrapSafe").addEventListener("change", saveWrapUI);
+  $("numWrapChars").addEventListener("change", saveWrapUI);
+  $("btnWrapSel").addEventListener("click", function () { runWrap("SM_wrapSelected", "선택 자막 줄바꿈"); });
+  $("btnWrapAll").addEventListener("click", function () { runWrap("SM_wrapCaptions", "전체 줄바꿈"); });
+  $("btnWrapUndo").addEventListener("click", undoWrap);
+
   // ========== 업데이트 · 버전 ==========
   var upd = window.SMUpdater;
   function showVer() {
@@ -637,6 +719,7 @@
 
   loadSettings();
   showTab("make");   // 초기 상태 정규화
+  syncWrapUI();
   showVer();
   // 방금 업데이트됐으면 알림
   try {

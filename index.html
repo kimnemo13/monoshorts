@@ -229,6 +229,29 @@
         <div class="hint">이미 만든 쇼츠의 자막 크기를 위 트랙별 배율로 다시 맞춤. 자막이 든 <b>~reframe</b> 시퀀스를 열고 누르세요.</div>
       </div>
 
+      <div class="grp" style="border-color:#2a3f55;">
+        <div class="gt">자막 줄바꿈 (화면 밖으로 넘치는 자막)</div>
+        <div class="ctrl-row">
+          <label style="width:auto; flex:1;"><input type="checkbox" id="chkAutoWrap" checked style="vertical-align:middle; accent-color:#2d8ceb;"> 쇼츠 만들 때 자동으로 줄바꿈</label>
+        </div>
+        <div class="ctrl-row">
+          <label>화면 폭 사용</label>
+          <input type="range" id="rngWrapSafe" min="60" max="100" step="1" value="90">
+          <span class="val" id="valWrapSafe">90%</span>
+        </div>
+        <div class="ctrl-row">
+          <label>한 줄 최대</label>
+          <input type="number" id="numWrapChars" value="0" min="0" max="60" class="txtin" style="width:52px;">
+          <span style="color:#888; font-size:11px;">글자 (0 = 화면 폭으로 자동 계산)</span>
+        </div>
+        <div class="ctrl-row" style="margin-top:9px;">
+          <button id="btnWrapSel" style="flex:1;">선택한 자막만 (테스트)</button>
+          <button id="btnWrapAll" class="primary" style="flex:1;">열린 시퀀스 전체</button>
+        </div>
+        <button id="btnWrapUndo" style="width:100%; margin-top:6px;">마지막 줄바꿈 되돌리기</button>
+        <div class="hint">화면 폭을 넘는 자막만 골라, <b>가운데에 가까운 띄어쓰기</b>에서 줄을 바꿉니다. 글꼴·색은 그대로. 자막이 든 <b>~reframe</b> 시퀀스를 열고 누르세요. 너무 일찍/늦게 끊기면 <b>화면 폭 사용</b>을 조절하거나 <b>한 줄 최대 글자 수</b>를 직접 정하세요.</div>
+      </div>
+
       <div class="grp">
         <div class="gt">업데이트 · 버전</div>
         <div class="ctrl-row">

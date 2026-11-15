@@ -401,7 +401,7 @@ function SM_sweepIntermediates() {
 
 // [방식 C · 메인] Auto Reframe → 1080x1920 쇼츠 시퀀스로 출력
 //   ① 구간 16:9 분리 → ② autoReframe(예 22:25) → ③ 1080x1920 시퀀스에 중첩·폭맞춤·중앙
-function SM_makeOne_autoreframe(shortName, seg, srcSeq, preset, arNum, arDen, vSettings, wantW, wantH, capMap, vPosY, titleMogrt, titleMogrt2, noReframe) {
+function SM_makeOne_autoreframe(shortName, seg, srcSeq, preset, arNum, arDen, vSettings, wantW, wantH, capMap, vPosY, titleMogrt, titleMogrt2, noReframe, wrapOpt) {
     if (typeof vPosY !== "number" || vPosY <= 0) vPosY = 0.5;
     if (!SM_setSeqInOut(srcSeq, seg.start, seg.end))
         return "err:시퀀스 In/Out 설정 불가";
@@ -433,6 +433,13 @@ function SM_makeOne_autoreframe(shortName, seg, srcSeq, preset, arNum, arDen, vS
         if (capMap) {
             var cr = SM_enlargeCaptionsOfSeq(reframed, capMap);
             capInfo = " 자막(" + SM_capDesc(capMap) + ",적용" + cr.text + "/실패" + cr.fail + ")";
+        }
+        // [1.0.4] 자막 자동 줄바꿈 (크기 조정 뒤에 해야 넘침을 정확히 판단)
+        if (wrapOpt) {
+            try {
+                var wr = SM_wrapCaptionsOfSeq(reframed, SM_wrapOpt(wrapOpt), SM_WRAP_LAST_UNDO);
+                capInfo += " 줄바꿈" + wr.changed + "개" + (wr.skipped ? ("(건너뜀" + wr.skipped + ")") : "");
+            } catch (eW) { capInfo += " 줄바꿈오류:" + eW; }
         }
     }
 
@@ -591,6 +598,7 @@ function SM_makeShorts(optJson) {
         }
         if (!segsToMake.length) return "err:만들 구간이 없음 — 구간을 먼저 담아주세요";
 
+        SM_WRAP_LAST_UNDO = [];
         var made = 0, logs = [];
         for (var q = 0; q < segsToMake.length; q++) {
             var seg = segsToMake[q];
@@ -598,7 +606,7 @@ function SM_makeShorts(optJson) {
             var shortName = "[쇼츠] " + (seg.name || ("Short " + (q + 1)));
             var res = "";
             if (method === "autoreframe") {
-                res = SM_makeOne_autoreframe(shortName, seg, srcSeq, opt.preset, opt.arNum, opt.arDen, vSettings, wantW, wantH, opt.capMap, opt.vPosY, opt.titleMogrt, opt.titleMogrt2, opt.noReframe);
+                res = SM_makeOne_autoreframe(shortName, seg, srcSeq, opt.preset, opt.arNum, opt.arDen, vSettings, wantW, wantH, opt.capMap, opt.vPosY, opt.titleMogrt, opt.titleMogrt2, opt.noReframe, opt.wrap || null);
             } else if (method === "nest") {
                 res = SM_makeOne_nest(shortName, seg, srcItem, vSettings, wantW, wantH, vScale, vPosY);
             } else {
@@ -1094,5 +1102,377 @@ function SM_applyExportAll(encJson) {
         // 원래 보고 있던 시퀀스로 복귀
         try { if (orig) app.project.openSequence(orig.sequenceID); } catch (eR) {}
         return "okall:" + okN + "/" + targets.length + "|" + msgs.join(" || ");
+    } catch (e) { return "err:" + e.toString(); }
+}
+
+
+// =====================================================================
+// [1.0.4] 자막 자동 줄바꿈
+//   쇼츠(~reframe) 시퀀스에서 화면 폭을 넘는 자막을 찾아, 가운데에 가까운
+//   띄어쓰기를 줄바꿈으로 바꿔 두 줄(필요하면 세 줄 이상)로 만든다.
+//   - 텍스트 값(JSON)을 통째로 다시 쓰지 않고, 글자 부분만 "수술"하듯 바꾼다
+//     → 글꼴·색·스타일 정보는 그대로 유지된다.
+//   - 바꾸기 전 원래 값을 되돌리기용으로 돌려준다 (SM_restoreCaptions).
+// =====================================================================
+
+var SM_WRAP_LAST_UNDO = [];   // 쇼츠 만들기 중 자동 줄바꿈한 항목(되돌리기용)
+
+// 옵션 문자열(eval) → 객체
+function SM_wrapOpt(o) {
+    o = o || {};
+    return {
+        safe: (typeof o.safe === "number" && o.safe > 20 && o.safe <= 100) ? o.safe : 90, // 화면 폭의 몇 %까지 쓸지
+        maxChars: (typeof o.maxChars === "number" && o.maxChars > 0) ? o.maxChars : 0,    // 한 줄 최대 글자 수(0=자동)
+        tracks: o.tracks || null   // {"2":true,...} 대상 트랙(없으면 V2 이상 전체)
+    };
+}
+
+// 글자 하나의 대략적인 폭 (글자 크기 1 기준)
+function SM_charW(ch) {
+    var c = ch.charCodeAt(0);
+    if (c === 32) return 0.28;
+    if ((c >= 0xAC00 && c <= 0xD7A3) || (c >= 0x1100 && c <= 0x11FF) || (c >= 0x3130 && c <= 0x318F) ||
+        (c >= 0x4E00 && c <= 0x9FFF) || (c >= 0x3040 && c <= 0x30FF) || (c >= 0xFF00 && c <= 0xFFEF)) return 0.9;
+    if (c >= 48 && c <= 57) return 0.56;                  // 숫자
+    if (c >= 65 && c <= 90) return 0.66;                  // 대문자
+    if (c >= 97 && c <= 122) return 0.52;                 // 소문자
+    if (".,:;'!|`".indexOf(ch) >= 0) return 0.28;
+    if ("\"()[]{}-~·…?".indexOf(ch) >= 0) return 0.40;
+    if (c > 0x2000) return 0.95;                          // 기타 기호·이모지
+    return 0.55;
+}
+function SM_lineUnits(s) { var w = 0; for (var i = 0; i < s.length; i++) w += SM_charW(s.charAt(i)); return w; }
+function SM_visLen(s) { return String(s).replace(/\s/g, "").length; }
+
+// JSON 문자열 리터럴을 디코드하면서, 디코드된 글자 i가 원본의 어디(raw 범위)인지 기록
+// raw[q] 는 여는 따옴표 다음 위치. 반환: {text, map:[[start,end],...], end: 닫는 따옴표 위치}
+function SM_decodeJsonStr(raw, q) {
+    var text = "", map = [], i = q;
+    while (i < raw.length) {
+        var ch = raw.charAt(i);
+        if (ch === '"') return { text: text, map: map, end: i };
+        if (ch === "\\") {
+            var n = raw.charAt(i + 1), dec = null, len = 2;
+            if (n === "n") dec = "\n"; else if (n === "r") dec = "\r"; else if (n === "t") dec = "\t";
+            else if (n === "b") dec = "\b"; else if (n === "f") dec = "\f";
+            else if (n === "u") { dec = String.fromCharCode(parseInt(raw.substr(i + 2, 4), 16)); len = 6; }
+            else dec = n;
+            text += dec; map.push([i, i + len]); i += len;
+        } else {
+            text += ch; map.push([i, i + 1]); i++;
+        }
+    }
+    return null;
+}
+
+// 텍스트 속성 값(raw)에서 글자 부분을 찾는다.
+//   형식 A(프리미어 기본 텍스트): ..."mText":"..."...
+//   형식 B(모션 그래픽 템플릿): ..."textEditValue":"..."...
+function SM_findTextField(raw) {
+    var keys = ['"mText":"', '"textEditValue":"'];
+    for (var k = 0; k < keys.length; k++) {
+        var p = raw.indexOf(keys[k]);
+        if (p < 0) continue;
+        var d = SM_decodeJsonStr(raw, p + keys[k].length);
+        if (d) { d.key = keys[k]; d.fmt = (k === 0) ? "A" : "B"; return d; }
+    }
+    return null;
+}
+function SM_fontSize(raw) {
+    var m = raw.match(/"mFontSize"\s*:\s*\[?\s*([0-9.]+)/) || raw.match(/"fontSizeEditValue"\s*:\s*\[?\s*([0-9.]+)/);
+    var v = m ? parseFloat(m[1]) : 0;
+    return (v > 1 && v < 2000) ? v : 100;
+}
+
+// 컴포넌트에서 이름으로 "크기(Scale)" 값(%)을 찾음
+function SM_scaleOf(comp) {
+    try {
+        var props = comp.properties;
+        for (var j = 0; j < props.numItems; j++) {
+            var pn = String(props[j].displayName);
+            if (pn === "Scale" || pn === "크기" || pn === "비율 조정" || pn === "비율") {
+                var v = parseFloat(props[j].getValue());
+                if (v > 0 && v < 10000) return v;
+            }
+        }
+    } catch (e) {}
+    return 100;
+}
+function SM_isSourceTextName(pn) {
+    pn = String(pn);
+    return pn === "Source Text" || pn === "소스 텍스트" || pn === "원본 텍스트" || pn === "텍스트 소스";
+}
+
+// 한 줄을 화면 폭(limit 단위)에 맞게 나눈다. 결과를 out에 넣음: {at: 전체 위치, type:"space"|"insert"}
+//   필요한 최소 줄 수를 구한 뒤, 그 줄 수 안에서 줄 길이가 가장 고르게 되도록 띄어쓰기를 고른다.
+function SM_measure(s, maxChars) { return (maxChars > 0) ? SM_visLen(s) : SM_lineUnits(s); }
+function SM_splitLine(line, limit, maxChars, base, out) {
+    var cap = (maxChars > 0) ? maxChars : limit;
+    if (SM_measure(line, maxChars) <= cap || line.length < 2) return;
+    // 띄어쓰기 위치들 (앞뒤에 글자가 있는 것만)
+    var sp = [];
+    for (var i = 1; i < line.length - 1; i++) if (line.charAt(i) === " ") sp.push(i);
+    var bounds = [-1].concat(sp).concat([line.length]);   // 조각 경계
+    var m = bounds.length - 1;                            // 조각(단어) 수
+    function seg(a, b) { return SM_measure(line.substring(bounds[a] + 1, bounds[b]), maxChars); }
+    var chosen = null;
+    if (m >= 2) {
+        // n줄로 나눌 때 가장 긴 줄을 최소로: best[k][j] = 앞 j조각을 k줄로 나눈 최솟값
+        for (var n = 2; n <= m && !chosen; n++) {
+            var best = [], from = [];
+            for (var k = 0; k <= n; k++) { best.push([]); from.push([]); for (var j = 0; j <= m; j++) { best[k].push(1e9); from[k].push(-1); } }
+            best[0][0] = 0;
+            for (k = 1; k <= n; k++) for (j = k; j <= m; j++) for (var x = k - 1; x < j; x++) {
+                if (best[k - 1][x] >= 1e9) continue;
+                var v = Math.max(best[k - 1][x], seg(x, j));
+                if (v < best[k][j]) { best[k][j] = v; from[k][j] = x; }
+            }
+            if (best[n][m] <= cap || n === m) {
+                chosen = []; var jj = m;
+                for (k = n; k > 1; k--) { jj = from[k][jj]; chosen.unshift(bounds[jj]); }
+            }
+        }
+    }
+    var pieces = [];   // [시작, 끝) 조각들
+    if (chosen && chosen.length) {
+        var st = 0;
+        for (var c = 0; c < chosen.length; c++) {
+            out.push({ at: base + chosen[c], type: "space" });
+            pieces.push([st, chosen[c]]); st = chosen[c] + 1;
+        }
+        pieces.push([st, line.length]);
+    } else pieces.push([0, line.length]);
+    // 띄어쓰기로 나눠도 넘치는 조각은 글자 단위로 자름
+    for (var q = 0; q < pieces.length; q++) {
+        var s0 = pieces[q][0], txt = line.substring(s0, pieces[q][1]);
+        if (SM_measure(txt, maxChars) <= cap || txt.length < 2) continue;
+        var parts = Math.ceil(SM_measure(txt, maxChars) / cap), per = Math.ceil(txt.length / parts);
+        for (var z = 1; z < parts; z++) {
+            var cut = z * per;
+            while (cut < txt.length - 1 && ".,!?…~)]\"'".indexOf(txt.charAt(cut)) >= 0) cut++;
+            if (cut > 0 && cut < txt.length) out.push({ at: base + s0 + cut, type: "insert" });
+        }
+    }
+}
+
+// 텍스트 전체에 대해 줄바꿈 위치 계산. 반환: [{at:전체 위치, type}]
+function SM_planBreaks(text, limit, maxChars) {
+    var out = [], start = 0;
+    for (var i = 0; i <= text.length; i++) {
+        var ch = (i < text.length) ? text.charAt(i) : "\r";
+        if (ch === "\r" || ch === "\n" || i === text.length) {
+            SM_splitLine(text.substring(start, i), limit, maxChars, start, out);
+            start = i + 1;
+        }
+    }
+    out.sort(function (a, b) { return a.at - b.at; });
+    return out;
+}
+
+// raw 값에 줄바꿈을 적용한 새 raw를 만든다. 실패 시 null
+function SM_applyBreaks(raw, fld, breaks) {
+    // 기존 줄바꿈이 원본에서 어떻게 적혀 있었는지 따라 씀 (없으면 \r 이스케이프)
+    var brRaw = "\\r";
+    for (var e = 0; e < fld.text.length; e++) {
+        var ce = fld.text.charAt(e);
+        if (ce === "\r" || ce === "\n") { brRaw = raw.substring(fld.map[e][0], fld.map[e][1]); break; }
+    }
+    var inserts = 0, res = raw;
+    // 뒤에서부터 바꿔야 앞쪽 위치가 안 밀린다
+    for (var k = breaks.length - 1; k >= 0; k--) {
+        var b = breaks[k], rng;
+        if (b.type === "space") {
+            rng = fld.map[b.at];
+            res = res.substring(0, rng[0]) + brRaw + res.substring(rng[1]);
+        } else {
+            if (fld.fmt !== "B") return null;   // 형식 A는 글자 수가 바뀌면 스타일이 깨질 수 있어 안 함
+            rng = fld.map[b.at];
+            res = res.substring(0, rng[0]) + brRaw + res.substring(rng[0]);
+            inserts++;
+        }
+    }
+    if (inserts > 0) {
+        // 형식 B: 글자 수가 늘어난 만큼 마지막 스타일 구간 길이를 늘림
+        var m = res.match(/"fontTextRunLength"\s*:\s*\[([0-9,\s]*)\]/);
+        if (m) {
+            var arr = m[1].split(","), last = arr.length - 1;
+            arr[last] = String(parseInt(arr[last], 10) + inserts);
+            res = res.replace(m[0], '"fontTextRunLength":[' + arr.join(",") + "]");
+        }
+    }
+    return res;
+}
+
+// 클립 하나 처리. frameW = 시퀀스 가로 픽셀. undo 배열에 원래 값 저장.
+// 반환: {changed, skipped, reason, detail[]}
+function SM_wrapClip(clip, frameW, opt, undo, seqId, tIdx) {
+    var r = { changed: 0, skipped: 0, reason: "", detail: [] };
+    var comps;
+    try { comps = clip.components; } catch (e0) { r.reason = "컴포넌트 없음"; return r; }
+    var motionScale = 100;
+    for (var mi = 0; mi < comps.numItems; mi++) {
+        var mn = String(comps[mi].displayName);
+        if (mn === "Motion" || mn === "모션") motionScale = SM_scaleOf(comps[mi]);
+    }
+    var foundText = false;
+    for (var i = 0; i < comps.numItems; i++) {
+        var comp = comps[i], props;
+        try { props = comp.properties; } catch (e1) { continue; }
+        var textScale = SM_scaleOf(comp);
+        for (var j = 0; j < props.numItems; j++) {
+            var p = props[j];
+            if (!SM_isSourceTextName(p.displayName)) continue;
+            var raw;
+            try { raw = String(p.getValue()); } catch (e2) { continue; }
+            var fld = SM_findTextField(raw);
+            if (!fld) { // 순수 문자열로 돌려주는 옛 버전
+                r.skipped++; r.reason = "텍스트 형식 인식 불가(" + raw.substring(0, 30) + ")"; continue;
+            }
+            foundText = true;
+            var fs = SM_fontSize(raw);
+            var unitPx = fs * (textScale / 100) * (motionScale / 100);
+            var limit = (frameW * opt.safe / 100) / unitPx;     // 한 줄에 허용되는 폭(글자 크기 1 단위)
+            var breaks = SM_planBreaks(fld.text, limit, opt.maxChars);
+            var info = "「" + fld.text.replace(/[\r\n]/g, "⏎") + "」 글자" + Math.round(fs) + " ×" + Math.round(textScale) + "%" +
+                (motionScale !== 100 ? " ×모션" + Math.round(motionScale) + "%" : "") +
+                " · 예상폭 " + Math.round(SM_lineUnits(fld.text.split(/[\r\n]/)[0]) * unitPx) + "/" + Math.round(frameW * opt.safe / 100) + "px";
+            if (!breaks.length) { r.detail.push(info + " → 그대로(넘치지 않음)"); continue; }
+            var nraw = SM_applyBreaks(raw, fld, breaks);
+            if (!nraw) { r.skipped++; r.detail.push(info + " → 건너뜀(띄어쓰기 없음)"); continue; }
+            try { p.setValue(nraw, true); } catch (e3) { r.skipped++; r.detail.push(info + " → 쓰기 실패 " + e3); continue; }
+            // 다시 읽어서 확인
+            var ok = false, after = "";
+            try {
+                var chk = SM_findTextField(String(p.getValue()));
+                if (chk) { after = chk.text; ok = (chk.text !== fld.text) && (SM_visLen(chk.text) === SM_visLen(fld.text)); }
+            } catch (e4) {}
+            if (ok) {
+                r.changed++;
+                undo.push({ seq: seqId, t: tIdx, s: String(clip.start.ticks), c: i, p: j, raw: encodeURIComponent(raw) });
+                r.detail.push(info + " → 「" + after.replace(/[\r\n]/g, "⏎") + "」");
+            } else {
+                try { p.setValue(raw, true); } catch (e5) {}   // 확인 실패 → 원래대로
+                r.skipped++; r.detail.push(info + " → 반영 확인 실패(원래대로 둠)");
+            }
+        }
+    }
+    if (!foundText && !r.reason) r.reason = "텍스트 클립 아님";
+    return r;
+}
+
+function SM_seqWidth(seq) {
+    try { var s = seq.getSettings(); var w = parseInt(s.videoFrameWidth, 10); if (w > 0) return w; } catch (e) {}
+    try { var w2 = parseInt(seq.frameSizeHorizontal, 10); if (w2 > 0) return w2; } catch (e2) {}
+    return 1080;
+}
+
+// 시퀀스 전체(V2 이상) 자막 줄바꿈 (내부용)
+function SM_wrapCaptionsOfSeq(seq, opt, undo) {
+    var tot = { clips: 0, changed: 0, skipped: 0, detail: [] };
+    var W = SM_seqWidth(seq), seqId = "";
+    try { seqId = String(seq.sequenceID); } catch (e) {}
+    var vt = seq.videoTracks;
+    for (var t = 1; t < vt.numTracks; t++) {
+        if (opt.tracks && !opt.tracks["" + (t + 1)]) continue;
+        var clips = vt[t].clips;
+        for (var c = 0; c < clips.numItems; c++) {
+            var r = SM_wrapClip(clips[c], W, opt, undo, seqId, t);
+            if (r.reason === "텍스트 클립 아님") continue;
+            tot.clips++; tot.changed += r.changed; tot.skipped += r.skipped;
+            for (var d = 0; d < r.detail.length; d++) tot.detail.push("V" + (t + 1) + " " + r.detail[d]);
+        }
+    }
+    tot.width = W;
+    return tot;
+}
+
+// 되돌리기 목록 → 문자열 ("a,b,c" 형태의 JSON 배열)
+function SM_undoToStr(undo) {
+    var a = [];
+    for (var i = 0; i < undo.length; i++) {
+        var u = undo[i];
+        a.push('{"seq":"' + SM_esc(u.seq) + '","t":' + u.t + ',"s":"' + u.s + '","c":' + u.c + ',"p":' + u.p + ',"raw":"' + u.raw + '"}');
+    }
+    return "[" + a.join(",") + "]";
+}
+
+// [버튼] 지금 열린 시퀀스의 자막 줄바꿈. optStr 예: {"safe":88,"maxChars":0}
+// 반환: {"ok":true,"changed":3,"skipped":0,"clips":12,"width":950,"log":"...","undo":[...]}
+function SM_wrapCaptions(optStr) {
+    try {
+        var seq = app.project.activeSequence;
+        if (!seq) return '{"ok":false,"reason":"열린 시퀀스가 없습니다"}';
+        var opt = SM_wrapOpt(optStr ? eval("(" + optStr + ")") : null);
+        var undo = [];
+        var r = SM_wrapCaptionsOfSeq(seq, opt, undo);
+        return '{"ok":true,"seq":"' + SM_esc(seq.name) + '","changed":' + r.changed + ',"skipped":' + r.skipped +
+            ',"clips":' + r.clips + ',"width":' + r.width + ',"log":"' + encodeURIComponent(r.detail.join("\n")) +
+            '","undo":' + SM_undoToStr(undo) + '}';
+    } catch (e) { return '{"ok":false,"reason":"' + SM_esc(e.toString()) + '"}'; }
+}
+
+// [버튼] 타임라인에서 선택한 자막 클립만 줄바꿈 (테스트용)
+function SM_wrapSelected(optStr) {
+    try {
+        var seq = app.project.activeSequence;
+        if (!seq) return '{"ok":false,"reason":"열린 시퀀스가 없습니다"}';
+        var opt = SM_wrapOpt(optStr ? eval("(" + optStr + ")") : null);
+        var sel = null;
+        try { sel = seq.getSelection(); } catch (eS) {}
+        if (!sel || !sel.length) return '{"ok":false,"reason":"타임라인에서 자막 클립을 하나 선택하세요"}';
+        var W = SM_seqWidth(seq), seqId = "";
+        try { seqId = String(seq.sequenceID); } catch (e0) {}
+        var undo = [], changed = 0, skipped = 0, logs = [], clipsN = 0;
+        for (var i = 0; i < sel.length; i++) {
+            var clip = sel[i], tIdx = -1;
+            try { if (clip.mediaType && String(clip.mediaType) !== "Video") continue; } catch (eM) {}
+            // 트랙 번호 찾기
+            for (var t = 0; t < seq.videoTracks.numTracks && tIdx < 0; t++) {
+                var cl = seq.videoTracks[t].clips;
+                for (var k = 0; k < cl.numItems; k++) {
+                    if (String(cl[k].start.ticks) === String(clip.start.ticks) && String(cl[k].name) === String(clip.name)) { tIdx = t; break; }
+                }
+            }
+            var r = SM_wrapClip(clip, W, opt, undo, seqId, tIdx);
+            if (r.reason === "텍스트 클립 아님") { logs.push(String(clip.name) + ": 텍스트 클립이 아님"); continue; }
+            clipsN++; changed += r.changed; skipped += r.skipped;
+            for (var d = 0; d < r.detail.length; d++) logs.push(r.detail[d]);
+            if (r.reason) logs.push(r.reason);
+        }
+        try { logs.push("(PPro " + app.version + ", 시퀀스 폭 " + W + "px)"); } catch (eV) {}
+        return '{"ok":true,"seq":"' + SM_esc(seq.name) + '","changed":' + changed + ',"skipped":' + skipped +
+            ',"clips":' + clipsN + ',"width":' + W + ',"log":"' + encodeURIComponent(logs.join("\n")) +
+            '","undo":' + SM_undoToStr(undo) + '}';
+    } catch (e) { return '{"ok":false,"reason":"' + SM_esc(e.toString()) + '"}'; }
+}
+
+// 쇼츠 만들기 중 자동 줄바꿈한 것들의 되돌리기 목록을 가져감(한 번 가져가면 비움)
+function SM_takeLastWrapUndo() {
+    var s = SM_undoToStr(SM_WRAP_LAST_UNDO);
+    SM_WRAP_LAST_UNDO = [];
+    return s;
+}
+
+// 되돌리기: undo 목록(encodeURIComponent된 JSON 배열)의 원래 값으로 복원
+function SM_restoreCaptions(encList) {
+    try {
+        var list = eval("(" + decodeURIComponent(encList) + ")");
+        var seqs = {}, ok = 0, miss = 0;
+        for (var i = 0; i < app.project.sequences.numSequences; i++) {
+            var sq = app.project.sequences[i];
+            try { seqs[String(sq.sequenceID)] = sq; } catch (e0) {}
+        }
+        for (var n = 0; n < list.length; n++) {
+            var u = list[n], seq = seqs[u.seq], done = false;
+            if (seq && u.t >= 0 && u.t < seq.videoTracks.numTracks) {
+                var cl = seq.videoTracks[u.t].clips;
+                for (var k = 0; k < cl.numItems && !done; k++) {
+                    if (String(cl[k].start.ticks) !== String(u.s)) continue;
+                    try { cl[k].components[u.c].properties[u.p].setValue(decodeURIComponent(u.raw), true); done = true; } catch (e1) {}
+                }
+            }
+            if (done) ok++; else miss++;
+        }
+        return "ok:" + ok + "/" + list.length + (miss ? (" (못 찾음 " + miss + " — 클립을 옮기거나 지웠을 수 있어요)") : "");
     } catch (e) { return "err:" + e.toString(); }
 }

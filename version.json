@@ -1,7 +1,7 @@
 {
-  "version": "1.0.3",
+  "version": "1.0.4",
   "repo": "kimnemo13/monoshorts",
-  "notes": "기존 1.0.3 기능 + 업데이트·버전 선택",
+  "notes": "화면 밖으로 넘치는 자막 자동 줄바꿈 (자동/수동/되돌리기)",
   "files": [
     "index.html",
     "js/main.js",
