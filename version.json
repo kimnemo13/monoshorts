@@ -1,7 +1,7 @@
 {
-  "version": "1.0.4",
+  "version": "1.0.5",
   "repo": "kimnemo13/monoshorts",
-  "notes": "화면 밖으로 넘치는 자막 자동 줄바꿈 (자동/수동/되돌리기)",
+  "notes": "자막 텍스트 인식 방식 개선(한국어 프리미어 대응) + 못 찾을 때 진단 표시",
   "files": [
     "index.html",
     "js/main.js",

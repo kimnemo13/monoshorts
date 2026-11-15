@@ -1321,12 +1321,14 @@ function SM_wrapClip(clip, frameW, opt, undo, seqId, tIdx) {
         var textScale = SM_scaleOf(comp);
         for (var j = 0; j < props.numItems; j++) {
             var p = props[j];
-            if (!SM_isSourceTextName(p.displayName)) continue;
+            // 이름(언어마다 다름)에 기대지 않고, 값 안에 글자 정보가 있으면 자막 텍스트로 본다
             var raw;
-            try { raw = String(p.getValue()); } catch (e2) { continue; }
-            var fld = SM_findTextField(raw);
-            if (!fld) { // 순수 문자열로 돌려주는 옛 버전
-                r.skipped++; r.reason = "텍스트 형식 인식 불가(" + raw.substring(0, 30) + ")"; continue;
+            try { raw = p.getValue(); } catch (e2) { continue; }
+            if (typeof raw !== "string") { try { raw = String(raw); } catch (e2b) { continue; } }
+            var fld = (raw.length > 8) ? SM_findTextField(raw) : null;
+            if (!fld) {
+                if (SM_isSourceTextName(p.displayName)) { r.skipped++; r.reason = "텍스트 형식 인식 불가: " + raw.substring(0, 60); }
+                continue;
             }
             foundText = true;
             var fs = SM_fontSize(raw);
@@ -1356,8 +1358,29 @@ function SM_wrapClip(clip, frameW, opt, undo, seqId, tIdx) {
             }
         }
     }
-    if (!foundText && !r.reason) r.reason = "텍스트 클립 아님";
+    if (!foundText && !r.reason) { r.reason = "텍스트 클립 아님"; r.diag = SM_clipDiag(clip); }
     return r;
+}
+
+// 진단: 클립의 컴포넌트·속성 이름과 값 앞부분 (텍스트를 못 찾았을 때 원인 파악용)
+function SM_clipDiag(clip) {
+    var out = [];
+    try {
+        out.push("클립: " + String(clip.name));
+        var comps = clip.components;
+        for (var i = 0; i < comps.numItems; i++) {
+            var ps = [], props = comps[i].properties;
+            for (var j = 0; j < props.numItems && j < 25; j++) {
+                var v = "?";
+                try { v = String(props[j].getValue()); } catch (e) { v = "(읽기불가)"; }
+                v = v.replace(/[\r\n]/g, "⏎");
+                if (v.length > 70) v = v.substring(0, 70) + "…";
+                ps.push(String(props[j].displayName) + "=" + v);
+            }
+            out.push(" [" + String(comps[i].displayName) + "] " + ps.join(" · "));
+        }
+    } catch (e2) { out.push("진단 오류: " + e2); }
+    return out.join("\n");
 }
 
 function SM_seqWidth(seq) {
@@ -1377,12 +1400,13 @@ function SM_wrapCaptionsOfSeq(seq, opt, undo) {
         var clips = vt[t].clips;
         for (var c = 0; c < clips.numItems; c++) {
             var r = SM_wrapClip(clips[c], W, opt, undo, seqId, t);
-            if (r.reason === "텍스트 클립 아님") continue;
+            if (r.reason === "텍스트 클립 아님") { if (!tot.diag && r.diag) tot.diag = "V" + (t + 1) + " " + r.diag; continue; }
             tot.clips++; tot.changed += r.changed; tot.skipped += r.skipped;
             for (var d = 0; d < r.detail.length; d++) tot.detail.push("V" + (t + 1) + " " + r.detail[d]);
         }
     }
     tot.width = W;
+    if (!tot.clips && tot.diag) tot.detail.push("자막 텍스트를 못 찾음 — 진단:\n" + tot.diag);
     return tot;
 }
 
@@ -1434,7 +1458,7 @@ function SM_wrapSelected(optStr) {
                 }
             }
             var r = SM_wrapClip(clip, W, opt, undo, seqId, tIdx);
-            if (r.reason === "텍스트 클립 아님") { logs.push(String(clip.name) + ": 텍스트 클립이 아님"); continue; }
+            if (r.reason === "텍스트 클립 아님") { logs.push("자막 텍스트를 못 찾음 — 진단:\n" + (r.diag || String(clip.name))); continue; }
             clipsN++; changed += r.changed; skipped += r.skipped;
             for (var d = 0; d < r.detail.length; d++) logs.push(r.detail[d]);
             if (r.reason) logs.push(r.reason);
