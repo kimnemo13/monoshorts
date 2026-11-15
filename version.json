@@ -1,7 +1,7 @@
 {
-  "version": "1.0.7",
+  "version": "1.0.8",
   "repo": "kimnemo13/monoshorts",
-  "notes": "자막 줄바꿈을 익스포트 탭으로 이동(작업 중인 것 / 전체 적용), 자동 줄바꿈 끔",
+  "notes": "줄바꿈이 반영되지 않던 문제 수정 시도(프리미어 고유 줄바꿈 문자 사용) + 실패 원인 표시",
   "files": [
     "index.html",
     "js/main.js",

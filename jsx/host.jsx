@@ -1117,6 +1117,18 @@ function SM_applyExportAll(encJson) {
 // =====================================================================
 
 var SM_WRAP_LAST_UNDO = [];   // 쇼츠 만들기 중 자동 줄바꿈한 항목(되돌리기용)
+var SM_WRAP_DIAG = "", SM_WRAP_FIRSTFAIL = "";   // 첫 실패 진단
+// 값 앞부분을 사람이 볼 수 있게 (제어문자는 코드로)
+function SM_rawPeek(v) {
+    v = String(v); var o = "";
+    for (var i = 0; i < v.length && i < 160; i++) {
+        var c = v.charCodeAt(i);
+        o += (c < 32 || c === 127) ? ("<" + c + ">") : v.charAt(i);
+    }
+    var t = v.indexOf("Text\":\""); if (t < 0) t = v.indexOf("EditValue\":\"");
+    if (t > 160) { o += " … "; for (i = t; i < v.length && i < t + 90; i++) { c = v.charCodeAt(i); o += (c < 32) ? ("<" + c + ">") : v.charAt(i); } }
+    return o + " (총 " + v.length + "자)";
+}
 
 // 옵션 문자열(eval) → 객체
 function SM_wrapOpt(o) {
@@ -1271,13 +1283,28 @@ function SM_planBreaks(text, limit, maxChars) {
 }
 
 // raw 값에 줄바꿈을 적용한 새 raw를 만든다. 실패 시 null
-function SM_applyBreaks(raw, fld, breaks) {
-    // 기존 줄바꿈이 원본에서 어떻게 적혀 있었는지 따라 씀 (없으면 \r 이스케이프)
-    var brRaw = "\\r";
+// 원본에 이미 줄바꿈이 있으면 그 표기를 돌려줌 (없으면 null)
+function SM_existingBreakRaw(raw, fld) {
     for (var e = 0; e < fld.text.length; e++) {
         var ce = fld.text.charAt(e);
-        if (ce === "\r" || ce === "\n") { brRaw = raw.substring(fld.map[e][0], fld.map[e][1]); break; }
+        if (ce === "\r" || ce === "\n") return raw.substring(fld.map[e][0], fld.map[e][1]);
     }
+    return null;
+}
+// 값 맨 앞의 4바이트 머리말이 "뒤따르는 길이"라면 새 길이로 고쳐 씀
+function SM_fixLenPrefix(oldRaw, newRaw) {
+    var b = oldRaw.indexOf("{");
+    if (b !== 4 || newRaw.indexOf("{") !== 4) return newRaw;
+    var c = [], k;
+    for (k = 0; k < 4; k++) c.push(oldRaw.charCodeAt(k) & 255);
+    var be = ((c[0] * 256 + c[1]) * 256 + c[2]) * 256 + c[3], le = ((c[3] * 256 + c[2]) * 256 + c[1]) * 256 + c[0];
+    var oldLen = oldRaw.length - 4, newLen = newRaw.length - 4, big;
+    if (be === oldLen) big = true; else if (le === oldLen) big = false; else return newRaw;
+    var bytes = [(newLen >>> 24) & 255, (newLen >>> 16) & 255, (newLen >>> 8) & 255, newLen & 255];
+    if (!big) bytes.reverse();
+    return String.fromCharCode(bytes[0], bytes[1], bytes[2], bytes[3]) + newRaw.substring(4);
+}
+function SM_applyBreaks(raw, fld, breaks, brRaw) {
     var inserts = 0, res = raw;
     // 뒤에서부터 바꿔야 앞쪽 위치가 안 밀린다
     for (var k = breaks.length - 1; k >= 0; k--) {
@@ -1301,7 +1328,7 @@ function SM_applyBreaks(raw, fld, breaks) {
             res = res.replace(m[0], '"fontTextRunLength":[' + arr.join(",") + "]");
         }
     }
-    return res;
+    return SM_fixLenPrefix(raw, res);
 }
 
 // 클립 하나 처리. frameW = 시퀀스 가로 픽셀. undo 배열에 원래 값 저장.
@@ -1340,22 +1367,31 @@ function SM_wrapClip(clip, frameW, opt, undo, seqId, tIdx) {
                 (motionScale !== 100 ? " ×모션" + Math.round(motionScale) + "%" : "") +
                 " · 예상폭 " + Math.round(SM_lineUnits(fld.text.split(/[\r\n]/)[0]) * unitPx) + "/" + Math.round(frameW * opt.safe / 100) + "px";
             if (!breaks.length) { r.detail.push(info + " → 그대로(넘치지 않음)"); continue; }
-            var nraw = SM_applyBreaks(raw, fld, breaks);
-            if (!nraw) { r.skipped++; r.detail.push(info + " → 건너뜀(띄어쓰기 없음)"); continue; }
-            try { p.setValue(nraw, true); } catch (e3) { r.skipped++; r.detail.push(info + " → 쓰기 실패 " + e3); continue; }
-            // 다시 읽어서 확인
-            var ok = false, after = "";
-            try {
-                var chk = SM_findTextField(String(p.getValue()));
-                if (chk) { after = chk.text; ok = (chk.text !== fld.text) && (SM_visLen(chk.text) === SM_visLen(fld.text)); }
-            } catch (e4) {}
-            if (ok) {
+            // 줄바꿈 표기 후보: 원본에 있던 표기 → 실제 줄바꿈 문자(\r) → 이스케이프(\\r) → \n
+            var ex = SM_existingBreakRaw(raw, fld);
+            var cands = ex ? [ex] : ["\r", "\\r", "\n"];
+            var done = false, lastWhy = "", after = "";
+            for (var ci = 0; ci < cands.length && !done; ci++) {
+                var nraw = SM_applyBreaks(raw, fld, breaks, cands[ci]);
+                if (!nraw) { lastWhy = "건너뜀(띄어쓰기 없음)"; break; }
+                try { p.setValue(nraw, true); } catch (e3) { lastWhy = "쓰기 실패 " + e3; continue; }
+                var back = "";
+                try { back = String(p.getValue()); } catch (e4) {}
+                var chk = SM_findTextField(back);
+                if (chk && chk.text !== fld.text && SM_visLen(chk.text) === SM_visLen(fld.text)) { done = true; after = chk.text; }
+                else {
+                    lastWhy = "반영 안 됨";
+                    if (!SM_WRAP_DIAG) SM_WRAP_DIAG = "보낸 값: " + SM_rawPeek(nraw) + "\n다시 읽은 값: " + SM_rawPeek(back);
+                }
+            }
+            if (done) {
                 r.changed++;
                 undo.push({ seq: seqId, t: tIdx, s: String(clip.start.ticks), c: i, p: j, raw: encodeURIComponent(raw) });
                 r.detail.push(info + " → 「" + after.replace(/[\r\n]/g, "⏎") + "」");
             } else {
-                try { p.setValue(raw, true); } catch (e5) {}   // 확인 실패 → 원래대로
-                r.skipped++; r.detail.push(info + " → 반영 확인 실패(원래대로 둠)");
+                if (lastWhy !== "건너뜀(띄어쓰기 없음)") { try { p.setValue(raw, true); } catch (e5) {} }   // 원래대로
+                r.skipped++; r.detail.push(info + " → " + lastWhy + (lastWhy === "반영 안 됨" ? "(원래대로 둠)" : ""));
+                if (!SM_WRAP_FIRSTFAIL) SM_WRAP_FIRSTFAIL = lastWhy;
             }
         }
     }
@@ -1542,6 +1578,7 @@ function SM_capSeqsOfActive() {
 
 function SM_wrapSeqs(seqs, opt) {
     var undo = [], changed = 0, skipped = 0, clips = 0, logs = [], names = [];
+    SM_WRAP_DIAG = ""; SM_WRAP_FIRSTFAIL = "";
     for (var i = 0; i < seqs.length; i++) {
         var r = SM_wrapCaptionsOfSeq(seqs[i], opt, undo);
         changed += r.changed; skipped += r.skipped; clips += r.clips;
@@ -1549,6 +1586,7 @@ function SM_wrapSeqs(seqs, opt) {
         logs.push("■ " + String(seqs[i].name) + " — 줄바꿈 " + r.changed + "개 (자막 " + r.clips + "개 검토, 폭 " + r.width + "px)");
         for (var d = 0; d < r.detail.length; d++) logs.push("  " + r.detail[d]);
     }
+    if (skipped && SM_WRAP_FIRSTFAIL) logs.unshift("⚠ 건너뛴 이유: " + SM_WRAP_FIRSTFAIL + (SM_WRAP_DIAG ? ("\n" + SM_WRAP_DIAG) : "") + "\n");
     return '{"ok":true,"seq":"' + SM_esc(names.length > 1 ? (names.length + "개 시퀀스") : (names[0] || "")) + '","seqCount":' + seqs.length +
         ',"changed":' + changed + ',"skipped":' + skipped + ',"clips":' + clips + ',"width":0,"log":"' +
         encodeURIComponent(logs.join("\n")) + '","undo":' + SM_undoToStr(undo) + '}';
