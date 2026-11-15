@@ -1,0 +1,19 @@
+{
+  "version": "1.0.3",
+  "repo": "kimnemo13/monoshorts",
+  "notes": "기존 1.0.3 기능 + 업데이트·버전 선택",
+  "files": [
+    "index.html",
+    "js/main.js",
+    "js/updater.js",
+    "jsx/host.jsx",
+    "CSXS/manifest.xml",
+    "presets/short2_export_preset.epr",
+    "templates/a_title.mogrt",
+    "templates/b_title.mogrt",
+    "install-mac.command",
+    "uninstall-mac.command",
+    "README.md",
+    "설치안내.txt"
+  ]
+}
