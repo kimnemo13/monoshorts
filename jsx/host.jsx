@@ -1501,3 +1501,76 @@ function SM_restoreCaptions(encList) {
         return "ok:" + ok + "/" + list.length + (miss ? (" (못 찾음 " + miss + " — 클립을 옮기거나 지웠을 수 있어요)") : "");
     } catch (e) { return "err:" + e.toString(); }
 }
+
+// =====================================================================
+// [1.0.7] 익스포트 탭용 자막 줄바꿈 — 작업 중인 것 / 전체
+//   자막은 [쇼츠] 시퀀스 안에 중첩된 "~reframe" 시퀀스에 들어 있다.
+//   - 작업 중인 것: 열린 시퀀스가 [쇼츠] 최종이면 그 안의 ~reframe을, ~reframe이면 그 자체를 처리
+//   - 전체: 프로젝트의 모든 "[쇼츠] … ~reframe" 시퀀스
+// =====================================================================
+function SM_seqByProjectItem(item) {
+    if (!item) return null;
+    var nid = ""; try { nid = String(item.nodeId); } catch (e) {}
+    for (var i = 0; i < app.project.sequences.numSequences; i++) {
+        var s = app.project.sequences[i];
+        try { if (s.projectItem && String(s.projectItem.nodeId) === nid) return s; } catch (e2) {}
+    }
+    try { return SM_findSeqByName(item.name); } catch (e3) {}
+    return null;
+}
+function SM_isCapSeqName(nm) { nm = String(nm); return nm.indexOf("~reframe") >= 0 || nm.indexOf("~tmp16") >= 0; }
+
+// 열린 시퀀스 → 자막이 든 시퀀스 목록
+function SM_capSeqsOfActive() {
+    var seq = app.project.activeSequence, out = [], seen = {};
+    if (!seq) return out;
+    if (SM_isCapSeqName(seq.name)) { out.push(seq); return out; }
+    // 최종 [쇼츠] 시퀀스: V1에 중첩된 시퀀스를 찾음
+    try {
+        var cl = seq.videoTracks[0].clips;
+        for (var c = 0; c < cl.numItems; c++) {
+            var pi = null; try { pi = cl[c].projectItem; } catch (e) {}
+            var isSeq = false; try { isSeq = pi && pi.isSequence(); } catch (e1) {}
+            if (!isSeq) continue;
+            var inner = SM_seqByProjectItem(pi);
+            if (inner && !seen[String(inner.sequenceID)]) { seen[String(inner.sequenceID)] = 1; out.push(inner); }
+        }
+    } catch (e2) {}
+    if (!out.length) out.push(seq);   // 중첩이 없으면 열린 시퀀스 자체
+    return out;
+}
+
+function SM_wrapSeqs(seqs, opt) {
+    var undo = [], changed = 0, skipped = 0, clips = 0, logs = [], names = [];
+    for (var i = 0; i < seqs.length; i++) {
+        var r = SM_wrapCaptionsOfSeq(seqs[i], opt, undo);
+        changed += r.changed; skipped += r.skipped; clips += r.clips;
+        names.push(String(seqs[i].name));
+        logs.push("■ " + String(seqs[i].name) + " — 줄바꿈 " + r.changed + "개 (자막 " + r.clips + "개 검토, 폭 " + r.width + "px)");
+        for (var d = 0; d < r.detail.length; d++) logs.push("  " + r.detail[d]);
+    }
+    return '{"ok":true,"seq":"' + SM_esc(names.length > 1 ? (names.length + "개 시퀀스") : (names[0] || "")) + '","seqCount":' + seqs.length +
+        ',"changed":' + changed + ',"skipped":' + skipped + ',"clips":' + clips + ',"width":0,"log":"' +
+        encodeURIComponent(logs.join("\n")) + '","undo":' + SM_undoToStr(undo) + '}';
+}
+
+function SM_wrapCurrent(optStr) {
+    try {
+        if (!app.project.activeSequence) return '{"ok":false,"reason":"열린 시퀀스가 없습니다. 쇼츠 시퀀스를 여세요"}';
+        var opt = SM_wrapOpt(optStr ? eval("(" + optStr + ")") : null);
+        return SM_wrapSeqs(SM_capSeqsOfActive(), opt);
+    } catch (e) { return '{"ok":false,"reason":"' + SM_esc(e.toString()) + '"}'; }
+}
+
+function SM_wrapAll(optStr) {
+    try {
+        var opt = SM_wrapOpt(optStr ? eval("(" + optStr + ")") : null);
+        var seqs = [];
+        for (var i = 0; i < app.project.sequences.numSequences; i++) {
+            var s = app.project.sequences[i];
+            if (String(s.name).indexOf("~reframe") >= 0) seqs.push(s);
+        }
+        if (!seqs.length) return '{"ok":false,"reason":"[쇼츠] ~reframe 시퀀스가 없습니다. 쇼츠를 먼저 만드세요"}';
+        return SM_wrapSeqs(seqs, opt);
+    } catch (e) { return '{"ok":false,"reason":"' + SM_esc(e.toString()) + '"}'; }
+}

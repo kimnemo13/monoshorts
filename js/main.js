@@ -221,7 +221,7 @@
       titleMogrt: SETTINGS.titleMogrt || "",    // 윗줄 제목 템플릿 — 쇼츠 만들 때 V2에 자동 배치
       titleMogrt2: SETTINGS.titleMogrt2 || "",  // 아랫줄 제목 템플릿 — V3에 자동 배치
       segments: chosen.map(function (s) { return { name: s.name, start: s.start, end: s.end }; }),
-      wrap: (reframeOn && wrapCfg().auto) ? { safe: wrapCfg().safe, maxChars: wrapCfg().maxChars } : null   // [1.0.4] 자막 자동 줄바꿈
+      wrap: null   // 자동 줄바꿈은 끔 — 익스포트 탭에서 직접 적용
     };
     setStatus("Auto Reframe 쇼츠 " + chosen.length + "개 만드는 중…\n(분석에 구간당 수십 초 걸릴 수 있어요. 기다려주세요)");
     elBtnMake.disabled = true;
@@ -580,21 +580,18 @@
   function wrapCfg() {
     var w = SETTINGS.wrap || {};
     return {
-      auto: w.auto !== false,
       safe: (w.safe >= 60 && w.safe <= 100) ? w.safe : 90,
       maxChars: (w.maxChars > 0) ? w.maxChars : 0
     };
   }
   function syncWrapUI() {
     var c = wrapCfg();
-    $("chkAutoWrap").checked = c.auto;
     $("rngWrapSafe").value = c.safe;
     $("valWrapSafe").textContent = c.safe + "%";
     $("numWrapChars").value = c.maxChars;
   }
   function saveWrapUI() {
     SETTINGS.wrap = {
-      auto: $("chkAutoWrap").checked,
       safe: parseInt($("rngWrapSafe").value, 10) || 90,
       maxChars: Math.max(0, parseInt($("numWrapChars").value, 10) || 0)
     };
@@ -628,8 +625,8 @@
       pushUndo(label + " · " + r.seq, r.undo);
       var log = decodeURIComponent(r.log || "");
       var head = "줄바꿈 " + r.changed + "개 적용" + (r.skipped ? (", 건너뜀 " + r.skipped + "개") : "") +
-        "  (자막 " + r.clips + "개 확인 · 화면 폭 " + r.width + "px)";
-      if (r.clips === 0) head = "자막(텍스트) 클립을 찾지 못했어요. 자막이 든 ~reframe 시퀀스를 열었는지 확인하세요.";
+        "  (" + (r.seqCount ? (r.seqCount + "개 시퀀스, ") : "") + "자막 " + r.clips + "개 검토)";
+      if (r.clips === 0) head = "자막(텍스트) 클립을 찾지 못했어요.";
       setStatus(head + (log ? ("\n\n" + log) : "") + (r.changed ? "\n\n마음에 안 들면 '마지막 줄바꿈 되돌리기'를 누르세요." : ""), r.clips ? "ok" : "err", true);
     });
   }
@@ -647,12 +644,11 @@
       } else setStatus("되돌리기 실패: " + res, "err");
     });
   }
-  $("chkAutoWrap").addEventListener("change", saveWrapUI);
   $("rngWrapSafe").addEventListener("input", function () { $("valWrapSafe").textContent = $("rngWrapSafe").value + "%"; });
   $("rngWrapSafe").addEventListener("change", saveWrapUI);
   $("numWrapChars").addEventListener("change", saveWrapUI);
-  $("btnWrapSel").addEventListener("click", function () { runWrap("SM_wrapSelected", "선택 자막 줄바꿈"); });
-  $("btnWrapAll").addEventListener("click", function () { runWrap("SM_wrapCaptions", "전체 줄바꿈"); });
+  $("btnWrapCur").addEventListener("click", function () { runWrap("SM_wrapCurrent", "작업 중인 것 줄바꿈"); });
+  $("btnWrapAll").addEventListener("click", function () { runWrap("SM_wrapAll", "전체 줄바꿈"); });
   $("btnWrapUndo").addEventListener("click", undoWrap);
 
   // ========== 업데이트 · 버전 ==========

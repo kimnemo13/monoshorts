@@ -96,7 +96,7 @@
   .status.err { color: #e06c6c; }
   .status.ok { color: #79a86b; }
   select.txtin { padding: 3px 4px; }
-  #btnWrapUndo, #btnWrapSel, #btnWrapAll { font-size: 11px; }
+  #btnWrapUndo { font-size: 11px; }
 </style>
 </head>
 <body>
@@ -166,7 +166,27 @@
         </div>
         <div class="hint"><b>작업 중인 것에 적용</b> = 지금 열려 있는 시퀀스에만. <b>전체 적용</b> = [쇼츠]로 만든 모든 시퀀스에 한 번에. 하단 이미지는 <b>V4</b>에 들어갑니다. (제목은 V2·V3)</div>
 
-        <div class="grp" style="margin-top:12px; border-color:#3a4a2a;">
+        <div class="grp" style="margin-top:12px; border-color:#2a3f55;">
+          <div class="gt">자막 줄바꿈 (화면 밖으로 넘치는 자막)</div>
+          <div class="ctrl-row" style="margin-top:0;">
+            <label>화면 폭 사용</label>
+            <input type="range" id="rngWrapSafe" min="60" max="100" step="1" value="90">
+            <span class="val" id="valWrapSafe">90%</span>
+          </div>
+          <div class="ctrl-row">
+            <label>한 줄 최대</label>
+            <input type="number" id="numWrapChars" value="0" min="0" max="60" class="txtin" style="width:52px;">
+            <span style="color:#888; font-size:11px;">글자 (0 = 자동)</span>
+          </div>
+          <div class="ctrl-row" style="margin-top:9px;">
+            <button id="btnWrapCur" class="primary" style="flex:1; padding:10px;">작업 중인 것에 적용</button>
+            <button id="btnWrapAll" class="primary" style="flex:1; padding:10px;">전체 적용</button>
+          </div>
+          <button id="btnWrapUndo" style="width:100%; margin-top:6px;">마지막 줄바꿈 되돌리기</button>
+          <div class="hint"><b>작업 중인 것에 적용</b> = 지금 열린 쇼츠 하나만. <b>전체 적용</b> = [쇼츠]로 만든 모든 시퀀스. 화면 폭을 넘는 자막만 골라 <b>가운데에 가까운 띄어쓰기</b>에서 줄을 바꿉니다(글꼴·색 유지). 너무 일찍/늦게 끊기면 <b>화면 폭 사용</b>이나 <b>한 줄 최대 글자 수</b>를 조절하세요.</div>
+        </div>
+
+        <div class="grp" style="border-color:#3a4a2a;">
           <div class="gt">최종 파일 익스포트</div>
           <div id="presetPath" class="hint" style="margin-top:0;">프리셋 확인 중…</div>
           <div id="exportFolderPath" class="hint">폴더: 바탕화면 (기본)</div>
@@ -227,29 +247,6 @@
         <div class="hint"><b>트랙:배율</b> 형식으로 트랙마다 다르게 지정. 예) <b>2:110, 3:130</b> = V2는 110%·V3는 130%. 배율 없이 <b>2,3</b>만 적으면 위 기본 배율 적용. 비우면 전체를 기본 배율로. 100%=원본. 안 적은 트랙(제목·효과)은 그대로 둡니다.</div>
         <button id="btnEnlargeCap">이미 만든 쇼츠에 이 설정 다시 적용</button>
         <div class="hint">이미 만든 쇼츠의 자막 크기를 위 트랙별 배율로 다시 맞춤. 자막이 든 <b>~reframe</b> 시퀀스를 열고 누르세요.</div>
-      </div>
-
-      <div class="grp" style="border-color:#2a3f55;">
-        <div class="gt">자막 줄바꿈 (화면 밖으로 넘치는 자막)</div>
-        <div class="ctrl-row">
-          <label style="width:auto; flex:1;"><input type="checkbox" id="chkAutoWrap" checked style="vertical-align:middle; accent-color:#2d8ceb;"> 쇼츠 만들 때 자동으로 줄바꿈</label>
-        </div>
-        <div class="ctrl-row">
-          <label>화면 폭 사용</label>
-          <input type="range" id="rngWrapSafe" min="60" max="100" step="1" value="90">
-          <span class="val" id="valWrapSafe">90%</span>
-        </div>
-        <div class="ctrl-row">
-          <label>한 줄 최대</label>
-          <input type="number" id="numWrapChars" value="0" min="0" max="60" class="txtin" style="width:52px;">
-          <span style="color:#888; font-size:11px;">글자 (0 = 화면 폭으로 자동 계산)</span>
-        </div>
-        <div class="ctrl-row" style="margin-top:9px;">
-          <button id="btnWrapSel" style="flex:1;">선택한 자막만 (테스트)</button>
-          <button id="btnWrapAll" class="primary" style="flex:1;">열린 시퀀스 전체</button>
-        </div>
-        <button id="btnWrapUndo" style="width:100%; margin-top:6px;">마지막 줄바꿈 되돌리기</button>
-        <div class="hint">화면 폭을 넘는 자막만 골라, <b>가운데에 가까운 띄어쓰기</b>에서 줄을 바꿉니다. 글꼴·색은 그대로. 자막이 든 <b>~reframe</b> 시퀀스를 열고 누르세요. 너무 일찍/늦게 끊기면 <b>화면 폭 사용</b>을 조절하거나 <b>한 줄 최대 글자 수</b>를 직접 정하세요.</div>
       </div>
 
       <div class="grp">

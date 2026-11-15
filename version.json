@@ -1,7 +1,7 @@
 {
-  "version": "1.0.6",
+  "version": "1.0.7",
   "repo": "kimnemo13/monoshorts",
-  "notes": "쇼츠 만들 때 자동 줄바꿈 결과를 패널에 표시",
+  "notes": "자막 줄바꿈을 익스포트 탭으로 이동(작업 중인 것 / 전체 적용), 자동 줄바꿈 끔",
   "files": [
     "index.html",
     "js/main.js",
