@@ -1,6 +1,6 @@
 /* monoshorts — 자동 업데이트 / 이전 버전으로 되돌리기
  * GitHub 저장소(kimnemo13/monoshorts)의 version.json을 확인해 새 버전이면 파일을 받아 패널을 다시 불러온다.
- * - 버전마다 GitHub 태그(v1.0.4 등)가 있어서, 원하는 옛 버전을 골라 그대로 설치할 수도 있다.
+ * - 버전마다 GitHub 브랜치(release-1.0.4 등)가 있어서, 원하는 옛 버전을 골라 그대로 설치할 수도 있다.
  * - 옛 버전을 고르면 "버전 고정"이 걸려 자동 업데이트가 멈춘다. (최신으로 돌아가면 다시 켜짐)
  * - 사용자 설정 파일(sm-settings.json 등)은 절대 건드리지 않는다.
  * - 사용 통계·데이터 전송 없음. GitHub에 버전 확인만 한다.
@@ -114,18 +114,19 @@
       });
   }
 
-  // GitHub 태그 목록 → 버전 목록 (최신순)
+  // 버전 목록 (최신순) — GitHub의 release-1.0.4 같은 브랜치가 버전 하나씩. 결과는 "v1.0.4" 형태
   function listVersions() {
-    return get("https://api.github.com/repos/" + getRepo() + "/tags?per_page=100", true).then(function (tags) {
-      return (tags || []).map(function (t) { return t.name; })
-        .filter(function (n) { return /^v?\d+\.\d+\.\d+$/.test(n); })
+    return get("https://api.github.com/repos/" + getRepo() + "/branches?per_page=100", true).then(function (brs) {
+      return (brs || []).map(function (b) { var m = /^release-(\d+\.\d+\.\d+)$/.exec(b.name); return m ? "v" + m[1] : null; })
+        .filter(function (n) { return !!n; })
         .sort(function (a, b) { return cmp(b, a); });
     });
   }
 
-  // 특정 버전(태그) 설치. 최신 버전이 아니면 버전 고정(자동 업데이트 멈춤)
-  function installVersion(tag, isLatest, onMsg) {
-    return installRef(getRepo(), tag, onMsg || function () {}).then(function (r) {
+  // 특정 버전 설치 ("v1.0.3" → release-1.0.3 브랜치). 최신 버전이 아니면 버전 고정(자동 업데이트 멈춤)
+  function installVersion(ver, isLatest, onMsg) {
+    var ref = "release-" + String(ver).replace(/^v/, "");
+    return installRef(getRepo(), ref, onMsg || function () {}).then(function (r) {
       setPinned(isLatest ? "" : r.version);
       return r;
     });
