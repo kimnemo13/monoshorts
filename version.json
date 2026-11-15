@@ -1,7 +1,7 @@
 {
-  "version": "1.0.9",
+  "version": "1.0.10",
   "repo": "kimnemo13/monoshorts",
-  "notes": "줄바꿈 진단 기록(wrap-log.txt) + 띄어쓰기 기준 줄바꿈은 항상 시도",
+  "notes": "자막 텍스트 값 인식 범위 확대 + 인식 실패 시 값 기록",
   "files": [
     "index.html",
     "js/main.js",

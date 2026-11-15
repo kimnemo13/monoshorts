@@ -1182,12 +1182,11 @@ function SM_decodeJsonStr(raw, q) {
 //   형식 A(프리미어 기본 텍스트): ..."mText":"..."...
 //   형식 B(모션 그래픽 템플릿): ..."textEditValue":"..."...
 function SM_findTextField(raw) {
-    var keys = ['"mText":"', '"textEditValue":"'];
-    for (var k = 0; k < keys.length; k++) {
-        var p = raw.indexOf(keys[k]);
-        if (p < 0) continue;
-        var d = SM_decodeJsonStr(raw, p + keys[k].length);
-        if (d) { d.key = keys[k]; d.fmt = (k === 0) ? "A" : "B"; return d; }
+    // "mText" : "..." / "textEditValue":"..." (띄어쓰기 허용)
+    var re = /"(mText|textEditValue|mTextString|text)"\s*:\s*"/g, m;
+    while ((m = re.exec(raw)) !== null) {
+        var d = SM_decodeJsonStr(raw, m.index + m[0].length);
+        if (d && d.text.length) { d.key = m[1]; d.fmt = (m[1] === "textEditValue") ? "B" : "A"; return d; }
     }
     return null;
 }
@@ -1355,7 +1354,11 @@ function SM_wrapClip(clip, frameW, opt, undo, seqId, tIdx) {
             if (typeof raw !== "string") { try { raw = String(raw); } catch (e2b) { continue; } }
             var fld = (raw.length > 8) ? SM_findTextField(raw) : null;
             if (!fld) {
-                if (SM_isSourceTextName(p.displayName)) { r.skipped++; r.reason = "텍스트 형식 인식 불가: " + raw.substring(0, 60); }
+                if (SM_isSourceTextName(p.displayName)) {
+                    r.skipped++; r.reason = "텍스트 형식 인식 불가";
+                    r.detail.push("텍스트 형식 인식 불가 — 컴포넌트 '" + String(comp.displayName) + "' 속성 '" + String(p.displayName) + "' 값: " + SM_rawPeek(raw, 1200));
+                    if (!SM_WRAP_FIRSTFAIL) SM_WRAP_FIRSTFAIL = "텍스트 형식 인식 불가";
+                }
                 continue;
             }
             foundText = true;
