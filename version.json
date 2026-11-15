@@ -1,7 +1,7 @@
 {
-  "version": "1.0.5",
+  "version": "1.0.6",
   "repo": "kimnemo13/monoshorts",
-  "notes": "자막 텍스트 인식 방식 개선(한국어 프리미어 대응) + 못 찾을 때 진단 표시",
+  "notes": "쇼츠 만들 때 자동 줄바꿈 결과를 패널에 표시",
   "files": [
     "index.html",
     "js/main.js",

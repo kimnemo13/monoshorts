@@ -438,7 +438,8 @@ function SM_makeOne_autoreframe(shortName, seg, srcSeq, preset, arNum, arDen, vS
         if (wrapOpt) {
             try {
                 var wr = SM_wrapCaptionsOfSeq(reframed, SM_wrapOpt(wrapOpt), SM_WRAP_LAST_UNDO);
-                capInfo += " 줄바꿈" + wr.changed + "개" + (wr.skipped ? ("(건너뜀" + wr.skipped + ")") : "");
+                capInfo += " · 자동 줄바꿈 " + wr.changed + "개(자막 " + wr.clips + "개 검토" + (wr.skipped ? (", 건너뜀 " + wr.skipped) : "") + ")";
+                if (!wr.clips && wr.diag) capInfo += " ⚠ 자막 텍스트를 못 찾음 — 진단: " + wr.diag.replace(/\n/g, " / ");
             } catch (eW) { capInfo += " 줄바꿈오류:" + eW; }
         }
     }

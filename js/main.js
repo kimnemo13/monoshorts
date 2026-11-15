@@ -244,10 +244,11 @@
           "\n\n프로젝트 패널에 [쇼츠] 시퀀스가 생겼습니다.\n담은 구간 목록은 비웠습니다." +
           (hasTitle ? ("\n제목 템플릿을 각 쇼츠 " + titleWhere + "에 올렸어요. 글자는 화면에서 더블클릭해 직접 입력하세요.") : "");
         // 제목 템플릿은 importMGT가 비동기 → 잠시 뒤 새 클립을 찾아 길이 맞춤
+        var showIt = !!opt.wrap;   // 자동 줄바꿈을 켰으면 결과(몇 개 줄바꿈했는지)를 보여줌
         if (hasTitle) {
-          setTimeout(function () { doFlush(8, function () { setStatus(doneMsg, "ok"); }); }, 700);
+          setTimeout(function () { doFlush(8, function () { setStatus(doneMsg, "ok", showIt); }); }, 700);
         } else {
-          setStatus(doneMsg, "ok");
+          setStatus(doneMsg, "ok", showIt);
         }
       } else {
         setStatus("실패: " + res, "err");
